@@ -28,6 +28,10 @@ class ShortRateFuturesCurve:
 		self.ccyCode = curveName[0:3].upper()
 		self.saveDate = date.today()
 
+	def __iter__(self):
+		for tempFut in self.shortRateCurveQuotes:
+			yield tempFut
+
 	def loadCurveQuotes(self, saveDate):
 		self.shortRateCurveQuotes = []
 		db = self.msSQLConnect()
