@@ -1,32 +1,56 @@
 import math
 from scipy.stats import norm
  
-class Option:
-    def __init__(self, k, s, rf, vol, t):
+ # using Arithmetic Brownian Motion
+class OptionABM:
+    # putcall flag, 0 = call, 1 = put
+    def __init__(self, k, s, rf, vol, t, putcall = 0):
         self.k = float(k)
         self.s = float(s)
         self.rf = float(rf)
         self.vol = float(vol)
         self.t = float(t)
+        self.putcall = bool(putcall)
  
-    def get_call(self):
-        d1 = ( math.log(self.s/self.k) + ( self.rf + math.pow( self.vol, 2)/2 ) * self.t ) / ( self.vol * math.sqrt(self.t) )
-        d2 = d1 - self.vol * math.sqrt(self.t)
-        return ( norm.cdf(d1) * self.s - norm.cdf(d2) * self.k * math.exp( -self.rf * self.t ) )
- 
-    def get_delta(self, d = 0.01):
+    def getPrice(self):
+        d = ((100-self.k) - (100-self.s))/(self.vol*math.pow(self.t,0.5))
+        callPrice = math.exp(-self.rf*self.t)*((100-self.k) - (100-self.s))*norm.cdf(d) + self.vol*norm.pdf(d)*math.pow(self.t,0.5)
+        # if call
+        if self.putcall:
+            return callPrice -(math.exp(-self.rf*self.t)*(self.s-self.k))
+        else:
+            return callPrice
+
+    def getDelta(self, d = 0.01):
         self.s += d
-        after_call_price = self.get_call()
-        self.s -= d
-        org_call_price = self.get_call()
-        return (after_call_price - org_call_price) / d
+        afterPrice = self.getPrice()
+        self.s -= 2*d
+        origPrice = self.getPrice()
+        self.s += d
+        return (afterPrice - origPrice) / (2*d)
  
-    def get_theta(self, dt = 0.01):
+    def getTheta(self, dt = 0.01):
         self.t += dt
-        after_call_price = self.get_call()
+        afterPrice = self.getPrice()
         self.t -= dt
-        org_call_price = self.get_call()
-        return (after_call_price - org_call_price) / dt * -1
+        origPrice = self.getPrice()
+        return (afterPrice - origPrice) / dt * -1
+
+    def getGamma(self, d=0.01):
+        self.s += d
+        afterDelta = self.getDelta()
+        self.s -= 2*d
+        origDelta = self.getDelta()
+        self.s += d
+        return (afterDelta - origDelta) / (2*d)
+
+    def getVega(self, d=0.01):
+        self.vol += d
+        afterPrice = self.getPrice()
+        self.vol -= 2*d
+        origPrice = self.getPrice()
+        self.vol += d
+        return (afterPrice - origPrice) / (2*d) * -1
 
     def option_price_implied_volatility_call_black_scholes_bisections(S, K, r, time,
                                                                   option_price):
