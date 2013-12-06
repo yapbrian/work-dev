@@ -5,11 +5,14 @@ from ShortRateFutures import *
 
 # Inherited from futures curve for risk tracking purposes
 class ShortRateFuturesCurveRisk(ShortRateFuturesCurve):
-	def addRiskPosition(self, futCode, riskVal):
-		for i, tempFut in enumerate(self.shortRateCurveQuotes):
-			if tempFut.futCode == futCode:
-				tempFut.position = riskVal
-				self.shortRateCurveQuotes[i] = tempFut
+	# Placeholder
+	def emptyFunc(self):
+		return 0
+	# def addRiskPosition(self, futCode, riskVal):
+	# 	for i, tempFut in enumerate(self.shortRateCurveQuotes):
+	# 		if tempFut.futCode == futCode:
+	# 			tempFut.position = tempFut.position + riskVal
+	# 			self.shortRateCurveQuotes[i] = tempFut
 
 class FixedIncomePortfolio(object):
 	# For each currency map to the appropriate curve
@@ -48,7 +51,7 @@ class FixedIncomePortfolio(object):
 			if row.totalNotional > 0.01 or row.totalNotional < -0.01:
 				print row.currencySymbol + "," + str(row.strike) + "," + row.CallPut + "," + str(row.maturity) + "," + str(row.PriceDate) + "," + str(row.totalNotional)
 				# must convert the dates to strings for some reason
-				#tempFuture = ShortRateFutures(row.currencySymbol, str(row.maturity), str(row.PriceDate), position = row.totalNotional)
+				# tempFuture = ShortRateFutures(row.currencySymbol, str(row.maturity), str(row.PriceDate), position = row.totalNotional)
 				# tempFuture = ShortRateFutures("USD", "June 16, 2016", "November 19, 2013", 100, 100)
 				# self.shortFutPos.append(tempFuture)
 
@@ -90,6 +93,8 @@ class FixedIncomePortfolio(object):
 		# print(sqlString)
 
 	# Calculate the risk across various futures curves
+	# riskArray is an array of currencies each with a riskCurve which is a curve of short futures positions (plus options)
+	# Without futures prices (call a different function)
 	def calcRiskCurve(self):
 		self.riskArray = []
 		for ccy, curve in self.ccyToFutMap.items():
@@ -98,7 +103,17 @@ class FixedIncomePortfolio(object):
 			
 			for tempFut in self.shortFutPos:
 				if tempFut.ccyCode == ccy:
-					tempRiskCurve.addRiskPosition(tempFut.futCode, tempFut.position)
+					newFut = tempRiskCurve[tempFut.futCode]
+					newFut.position = newFut.position + tempFut.position
+					tempRiskCurve[tempFut.futCode] = newFut
+
+			for tempFutOpt in self.shortFutOptPos:
+				tempFut = tempFutOpt.underlyingFut
+				if tempFut.ccyCode == ccy:
+					newFut = tempRiskCurve[tempFut.futCode]
+					tempFutOpt.setFutPrice(newFut.quotePrice)
+					newFut.position = newFut.position + tempFutOpt.getDelta()
+					tempRiskCurve[tempFut.futCode] = newFut
 
 			self.riskArray.append(tempRiskCurve)
 

@@ -3,7 +3,7 @@ from datetime import *
 import pyodbc
 
 # Define basic class for short rate futures to be used more as a container
-class ShortRateFutures:
+class ShortRateFutures(object):
 	# Calendar codes corresponding to the month for IMM
 	calCodes = {3:'H', 6:'M', 9:'U', 12:'Z'}
 	def __init__(self, ccyCode, matDate, saveDate, quotePrice = 100.0, position = 0):
@@ -14,15 +14,15 @@ class ShortRateFutures:
 		# Set current date (for price)
 		self.saveDate = parser.parse(saveDate)
 		# Price setting
-		self.quotePrice = quotePrice
+		self.quotePrice = float(quotePrice)
 		# Futures code
 		self.futCode = self.calCodes[self.matDate.month] + str(self.matDate.year%10)
 		# Position if specified
-		self.position = position
+		self.position = int(position)
 
 
 # Define the curve class that takes in all the securities from the database
-class ShortRateFuturesCurve:
+class ShortRateFuturesCurve(object):
 	def __init__(self, curveName):
 		self.curveName = curveName.upper()
 		self.ccyCode = curveName[0:3].upper()
@@ -31,6 +31,32 @@ class ShortRateFuturesCurve:
 	def __iter__(self):
 		for tempFut in self.shortRateCurveQuotes:
 			yield tempFut
+
+	# mostly a read for getting prices
+	def __getitem__(self, key):
+		if isinstance(key,basestring):
+			for tempFut in self.shortRateCurveQuotes:
+				if tempFut.futCode == str(key).upper():
+					return tempFut
+			# return last tempFut
+			raise KeyError
+		else:
+			raise TypeError
+
+	# set an appropriate key
+	def __setitem__(self,key,item):
+		if isinstance(key,basestring):
+			if isinstance(item,ShortRateFutures):
+				for i, tempFut in enumerate(self.shortRateCurveQuotes):
+					if tempFut.futCode == item.futCode:
+						tempFut = item
+						self.shortRateCurveQuotes[i] = tempFut
+						return tempFut
+				raise KeyError
+			else:
+				raise TypeError
+		else:
+			raise TypeError
 
 	def loadCurveQuotes(self, saveDate):
 		self.shortRateCurveQuotes = []
