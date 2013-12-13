@@ -40,11 +40,11 @@ class ShortRateFuturesOption(object):
 
 	# get revised price given new underlying and volatility, or just current price
 	def setFutPrice(self, underFutPrice):
-		self.underlyingFut = ShortRateFutures(self.underlyingFut.ccyCode, self.underLyingFut.underFutMat, self.underLyingFut.saveDate, float(underFutPrice))
+		self.underlyingFut = ShortRateFutures(self.underlyingFut.ccyCode, str(self.underlyingFut.matDate), str(self.underlyingFut.saveDate), float(underFutPrice))
 
 		tempOption = BlackNormalOptionABMPricer(self.__strike, self.underlyingFut.quotePrice, self.__rf, self.__vol, float((self.__matDate-self.__saveDate).days)/365, self.__putcall)
-		self._price = tempOption.getPrice()
-		return self._price
+		self.__price = tempOption.getPrice()
+		return self.__price
 
 	def getDelta(self):
 		tempOption = BlackNormalOptionABMPricer(self.__strike, self.underlyingFut.quotePrice, self.__rf, self.__vol, float((self.__matDate-self.__saveDate).days)/365, self.__putcall)
@@ -66,7 +66,7 @@ class ShortRateFuturesOption(object):
 		return self.__underFutCode
 
 	def get_matDate(self):
-		return self._matDate
+		return self.__matDate
 
 	def set_matDate(self, value):
 		self.__matDate = parser.parse(value)

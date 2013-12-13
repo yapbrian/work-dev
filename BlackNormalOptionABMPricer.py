@@ -46,7 +46,7 @@ class BlackNormalOptionABMPricer(object):
         d = ((100-self.k) - (100-self.s))/(self.vol*math.pow(self.t,0.5))
         return math.exp(-self.rf*self.t)*math.pow(self.t,0.5)*norm.pdf(d)
 
-    def getImpVol(self, solvePrice, MAX_ITER=100, ACC=1.0e-5):
+    def getImpVol(self, solvePrice, MAX_ITER=1000, ACC=1.0e-5):
         """Calculates implied volatility for the Black Scholes formula using
         the Newton-Raphson formula
         Converted to Python from "Financial Numerical Recipes in C" by:
@@ -58,20 +58,23 @@ class BlackNormalOptionABMPricer(object):
         if you want to use the pure version of this code)
         """                                 
         # check for arbitrage violations. Option price is too low if this happens
-        if (solvePrice<0.99*(math.exp(-self.rf*self.t)*(self.s-self.k))): 
+        tempExec = (self.k - self.s) if self.putcall else (self.s - self.k)
+        if (solvePrice<0.99*(math.exp(-self.rf*self.t)*tempExec)): 
+            # print "Arb condition violated : " + str(0.99*(math.exp(-self.rf*self.t)*tempExec))
             return 0.0
 
-        guessVol = (solvePrice/self.s)/(0.398*self.t) # find initial value
+        guessVol = 0.5 #(solvePrice/self.s)/(0.398*self.t) # find initial value
 
         d = ((100-self.k) - (100-self.s))/(guessVol*math.pow(self.t,0.5))
+
         for i in range(MAX_ITER):
             
             callPrice = math.exp(-self.rf*self.t)*((100-self.k) - (100-self.s))*norm.cdf(d) + guessVol*norm.pdf(d)*math.pow(self.t,0.5)
             
             price =  (callPrice - (math.exp(-self.rf*self.t)*(self.s-self.k))) if self.putcall else callPrice
             diff = solvePrice - price
-            
-            if (abs(diff)<ACC): 
+
+            if (abs(diff)<ACC):
                 return guessVol
             
             d = ((100-self.k) - (100-self.s))/(guessVol*math.pow(self.t,0.5))
