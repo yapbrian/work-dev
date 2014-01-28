@@ -26,9 +26,12 @@ class BlackNormalOptionABMPricer(object):
     # Analytic formula for delta under black normal formula
     def getDelta(self):
         d = ((100-self.k) - (100-self.s))/(self.vol*math.pow(self.t,0.5))
+        mod = 1
         # Norm.cdf(-d) for a put
-        if self.putcall: d = -d
-        return math.exp(-self.rf*self.t)*norm.cdf(d)
+        if self.putcall: 
+            d = -d
+            mod = -mod
+        return mod*math.exp(-self.rf*self.t)*norm.cdf(d)
 
     def getTheta(self, dt = 0.01):
         self.t += dt

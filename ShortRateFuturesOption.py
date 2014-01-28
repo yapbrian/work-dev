@@ -3,7 +3,7 @@ from ShortRateFutures import *
 
 # Define basic holding class for ShortRateFuturesOption
 class ShortRateFuturesOption(object):
-	
+
 	# maturity of the option
 	def __init__(self, ccyCode, underFutMat, underFutPrice, saveDate, optMatDate, optStrike, optRf, optPrice, optPos, putcall = 0 ):
 		# underlying futures object
@@ -48,19 +48,19 @@ class ShortRateFuturesOption(object):
 
 	def getDelta(self):
 		tempOption = BlackNormalOptionABMPricer(self.__strike, self.underlyingFut.quotePrice, self.__rf, self.__vol, float((self.__matDate-self.__saveDate).days)/365, self.__putcall)
-		return tempOption.getDelta() * self.position
+		return (-1)*tempOption.getDelta() * self.position	# get to rate risk instead of price risk so mult by -1
 
 	def getGamma(self):
 		tempOption = BlackNormalOptionABMPricer(self.__strike, self.underlyingFut.quotePrice, self.__rf, self.__vol, float((self.__matDate-self.__saveDate).days)/365, self.__putcall)
-		return tempOption.getGamma() * self.position
+		return tempOption.getGamma() * self.position / 100 # adjustment to get per bp
 
 	def getVega(self):
 		tempOption = BlackNormalOptionABMPricer(self.__strike, self.underlyingFut.quotePrice, self.__rf, self.__vol, float((self.__matDate-self.__saveDate).days)/365, self.__putcall)
-		return tempOption.getVega() * self.position
+		return tempOption.getVega() * self.position / 100
 
 	def getTheta(self):
 		tempOption = BlackNormalOptionABMPricer(self.__strike, self.underlyingFut.quotePrice, self.__rf, self.__vol, float((self.__matDate-self.__saveDate).days)/365, self.__putcall)
-		return tempOption.getTheta() * self.position
+		return tempOption.getTheta(1.0/365) * self.position
 
 	def get_underFutCode(self):
 		return self.__underFutCode

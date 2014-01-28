@@ -80,6 +80,27 @@ class ShortRateFuturesCurve(object):
 		# print(qryString)
 		return self.shortRateCurveQuotes
 
+	# Default shift.  If you specifcy frontShiftAmt it will put through the first contract at that amount up to
+	# the last contract which will shift by shiftAmt.
+	def shiftPriceCurve(self, shiftAmt = 0.01, backShiftAmt = 0.00):
+		numQuotes = len(self.shortRateCurveQuotes)-1
+		if backShiftAmt != 0.00:
+			# slope
+			perFutShiftSlope = (backShiftAmt - shiftAmt)/numQuotes 
+			# intercept
+			startShift = shiftAmt
+		else:
+			perFutShiftSlope = 0
+			startShift = shiftAmt
+
+		for x, tempFuture in enumerate(self.shortRateCurveQuotes):
+			# Change price
+			tempFuture.quotePrice = tempFuture.quotePrice + (perFutShiftSlope*x + startShift)
+			# reassign back
+			self.shortRateCurveQuotes[x] = tempFuture
+
+
+
 
 	def msSQLConnect(self):
 		dbConnectionStr = "DRIVER={SQL Server};SERVER=PRIDBSQLV01\PRI2008A;DATABASE=SHA2;Trusted_Connection=yes"
@@ -89,4 +110,5 @@ class ShortRateFuturesCurve(object):
 		    logging.warning("Database connection error. " + str(err))
 		    sys.exit()
 		return db
+
 
