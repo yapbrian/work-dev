@@ -100,8 +100,6 @@ class ShortRateFuturesCurve(object):
 			self.shortRateCurveQuotes[x] = tempFuture
 
 
-
-
 	def msSQLConnect(self):
 		dbConnectionStr = "DRIVER={SQL Server};SERVER=PRIDBSQLV01\PRI2008A;DATABASE=SHA2;Trusted_Connection=yes"
 		try:

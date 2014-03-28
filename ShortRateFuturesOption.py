@@ -20,12 +20,12 @@ class ShortRateFuturesOption(object):
 		self.__rf = float(optRf)
 		# price of option (usually specify the price instead of the vol)
 		self.__price = float(optPrice)
-		# position in this option
+		# position in this option (note that this is units of option and not notional)
 		self.position = int(optPos)
 		# put or call 0 = call (false), 1 = put (true)
 		self.__putcall = bool(putcall)
 		# volatility - usually unspecified so imply from price with a temp option
-		tempOption = BlackNormalOptionABMPricer(self.__strike, self.underlyingFut.quotePrice, self.__rf, 100, float((self.__matDate-self.__saveDate).days)/365, self.__putcall)
+		tempOption = BlackNormalOptionABMPricer(self.__strike, self.underlyingFut.quotePrice, self.__rf, 1.00, float((self.__matDate-self.__saveDate).days)/365, self.__putcall)
 		self.__vol =  tempOption.getImpVol(self.__price)
 
 	# Helper functions to reprice option on property access
@@ -56,11 +56,11 @@ class ShortRateFuturesOption(object):
 
 	def getVega(self):
 		tempOption = BlackNormalOptionABMPricer(self.__strike, self.underlyingFut.quotePrice, self.__rf, self.__vol, float((self.__matDate-self.__saveDate).days)/365, self.__putcall)
-		return tempOption.getVega() * self.position / 100
+		return tempOption.getVega() * self.position # adjustment to get per bp not necessary since we look at price per bp (price needs to be adj)
 
 	def getTheta(self):
 		tempOption = BlackNormalOptionABMPricer(self.__strike, self.underlyingFut.quotePrice, self.__rf, self.__vol, float((self.__matDate-self.__saveDate).days)/365, self.__putcall)
-		return tempOption.getTheta(1.0/365) * self.position
+		return tempOption.getTheta(1.0/365) * self.position * 100  # x100 to get in basis points pricing i.e. 0.05 = 5 bps
 
 	def get_underFutCode(self):
 		return self.__underFutCode
@@ -93,7 +93,7 @@ class ShortRateFuturesOption(object):
 		self.rePriceOption()
 
 	def get_price(self):
-		return self.__price
+		return self.__price 
 
 	def set_price(self, value):
 		self.__price = float(value)

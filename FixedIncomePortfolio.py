@@ -57,7 +57,7 @@ class FixedIncomePortfolio(object):
 			""".format(
 				secType = 'OPT',
 				sqlDate = self.portDate.strftime('%Y-%m-%d'),
-				edMurexNames = "'CME EURUSD 3M','LIFFE EURGBP 3M','LIFFE EURIBOR 3M'"
+				edMurexNames = "'CME EURUSD 3M','LIFFE EURGBP 3M','LIFFE EURIBOR3M'"
 				)
 		cur.execute(sqlString)
 
@@ -68,13 +68,15 @@ class FixedIncomePortfolio(object):
 				optPrice = row.fmv / row.totalNotional / bpVal / 100.0
 				putcall = 0 if row.CallPut == "call" else 1
 				# print row.currencySymbol + "," + str(optPrice) + "," + str(row.fmv) + "," + str(row.strike) + "," + row.CallPut + "," + str(row.maturity) + "," +str(row.undermat) + "," + str(row.PriceDate) + "," + str(row.totalNotional)
+				# notional needs to be adjusted for GBP as it trades at 12.5 per point
+				tempPosition = 2*row.totalNotional if row.currencySymbol == "GBP" else row.totalNotional
 				# *********** NOTE THE RISK FREE RATE NEEDS TO BE CHANGED TO INTERP SWAP RATE **********
-				tempFutureOpt = ShortRateFuturesOption(row.currencySymbol, str(row.undermat), row.strike, str(row.PriceDate), str(row.maturity), row.strike, 0.005, optPrice, row.totalNotional, putcall )
+				tempFutureOpt = ShortRateFuturesOption(row.currencySymbol, str(row.undermat), row.strike, str(row.PriceDate), str(row.maturity), row.strike, 0.005, optPrice, tempPosition, putcall )
 				# tempFuture = ShortRateFutures(row.currencySymbol, str(row.maturity), str(row.PriceDate), position = row.totalNotional)
 				# tempFuture = ShortRateFutures("USD", "June 16, 2016", "November 19, 2013", 100, 100)
 				self.shortFutOptPos.append(tempFutureOpt)
 
-		return 1
+		return self.shortFutOptPos
 
 
 	# Query some table (either risk report or whatever for short futures positions)
@@ -254,6 +256,74 @@ class FixedIncomePortfolio(object):
 			# end for
 		# end for
 		# Now all curves have been shifted - can recalc and redump risk curve
+
+	# Screen dumps a readable matrix for checking on screen
+	def printRiskCurve(self):
+		for ccy, assetName in self.ccyToFutMap.items():
+			print ccy + " STIR CURVE"
+			print "FUT\tDELTA\tGAMMA\tTHETA\tVEGA"
+			riskString = ""
+
+			try:
+				tempPriceCurve = self.shortFuturesCurvePrices[assetName]
+			except KeyError:
+				print "KeyError for curvename " + assetName
+				return 1
+
+			try:
+				tempDeltaCurve = self.deltaArray[ccy]
+			except KeyError:
+				print "KeyError for Delta with currency " + ccy
+				return 1
+
+			try:
+				tempGammaCurve = self.gammaArray[ccy]
+			except KeyError:
+				print "KeyError for Gamma with currency " + ccy
+				return 1
+
+			try:
+				tempThetaCurve = self.thetaArray[ccy]
+			except KeyError:
+				print "KeyError for Theta with currency " + ccy
+				return 1
+
+			try:
+				tempVegaCurve = self.vegaArray[ccy]
+			except KeyError:
+				print "KeyError for Vega with currency " + ccy
+				return 1
+
+			for tempFuture in tempPriceCurve:
+				try:
+					deltaVal = tempDeltaCurve[tempFuture.futCode]
+				except KeyError:
+					deltaVal = 0
+
+				try:
+					gammaVal = tempGammaCurve[tempFuture.futCode]
+				except KeyError:
+					gammaVal = 0
+
+				try:	
+					thetaVal = tempThetaCurve[tempFuture.futCode]
+				except KeyError:
+					thetaVal = 0
+
+				try:
+					vegaCalArray = tempVegaCurve[tempFuture.futCode]
+					vegaVal = 0
+					for i, vegaItem in vegaCalArray.items():
+						vegaVal = vegaVal + vegaItem
+
+				except KeyError:
+					vegaVal = 0
+
+				riskString = "{0}\t{1:,.0f}\t{2:,.0f}\t{3:,.0f}\t{4:,.0f}".format(tempFuture.futCode, deltaVal, gammaVal, thetaVal, vegaVal)
+				print riskString
+
+			print "\n"
+
 
 	# This creates and executes a bunch of sql statements to dump data into the sql database specified in
 	# msSQLConnect
@@ -477,7 +547,7 @@ print str(runDate) + ":Calculating risk and dumping to database"
 updatePortfolio.calcRiskCurve()
 updatePortfolio.dumpRiskCurve()
 
-# Scenarios -20, -10, +10, +20
+# Scenarios -20, -10, +10, +20 on price (opposite on rate)
 updatePortfolio.shiftFuturesPriceCurve(shiftAmt=-0.20)
 updatePortfolio.calcRiskCurve()
 updatePortfolio.dumpRiskCurve(scenCode=1)

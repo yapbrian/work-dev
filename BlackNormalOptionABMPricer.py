@@ -36,9 +36,10 @@ class BlackNormalOptionABMPricer(object):
     def getTheta(self, dt = 0.01):
         self.t += dt
         afterPrice = self.getPrice()
-        self.t -= dt
-        origPrice = self.getPrice()
-        return (afterPrice - origPrice) / dt * -1
+        self.t -= 2*dt
+        afterPriceTwo = self.getPrice()
+        self.t += dt
+        return (afterPrice - afterPriceTwo) / 2 * -1
 
     # Analytic formula for Gamma under black normal formula
     def getGamma(self):
