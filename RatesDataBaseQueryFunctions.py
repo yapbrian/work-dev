@@ -110,9 +110,13 @@ def getFXData(startDate, endDate, numerator, denominator):
 # asset name is a string name for the asset that is being searched for, swaps, futures, bonds, etc.
 # startDate and endDate are datetime arguments that mark the start and end date of the timeseries
 def getAssetData(startDate, endDate, assetName):
+	# CHANGE TO SPLIT
+	splitAssetType = assetName.split("_")
+	splitAssetTypeSwap = splitAssetType[-3]
+	splitAssetTypeFut = splitAssetType[-2]
 
 	# Construct the time series query
-	if assetName.find("_FUT_") != -1:
+	if splitAssetTypeFut.find("FUT") != -1:
 		sqlString = """
 			SELECT fq.save_date, fq.rate_quote FROM SHA2.rates_data.futures_quotes fq 
 			LEFT JOIN SHA2.rates_data.asset_table at ON at.asset_id = fq.asset_id
@@ -123,7 +127,7 @@ def getAssetData(startDate, endDate, assetName):
 				startDateSQL = startDate.strftime('%Y-%m-%d'),
 				endDateSQL = endDate.strftime('%Y-%m-%d')
 				)
-	elif assetName.find("_SWAP_") != -1:
+	elif splitAssetTypeSwap.find("SWAP") != -1:
 		sqlString = """
 			SELECT sq.save_date, sq.rate_quote FROM SHA2.rates_data.swap_quotes sq 
 			LEFT JOIN SHA2.rates_data.asset_table at ON at.asset_id = sq.asset_id
@@ -134,7 +138,7 @@ def getAssetData(startDate, endDate, assetName):
 				startDateSQL = startDate.strftime('%Y-%m-%d'),
 				endDateSQL = endDate.strftime('%Y-%m-%d')
 				)
-	elif assetName.find("_BASIS_") != -1:
+	elif splitAssetTypeSwap.find("BASIS") != -1:
 		sqlString = """
 			SELECT bq.save_date, bq.rate_quote FROM SHA2.rates_data.basis_quotes bq 
 			LEFT JOIN SHA2.rates_data.asset_table at ON at.asset_id = bq.asset_id
@@ -297,5 +301,4 @@ with open(inputFile,"rb") as f:
 		testR = plotRegressAssetData(startDate, endDate, predDate, yAssetName, xAssetNameList)
 
 plt.show()
-
 

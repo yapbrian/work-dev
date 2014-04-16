@@ -2,76 +2,19 @@ import GovernmentBonds as gb
 import FedTreasurySpline as fts
 import matplotlib.pyplot as plt
 import pandas as pd
-import pyodbc
 import findates as fd 	# Importa user defined library for financial date processing
+import RunBondSplineDE as rbsde
 from datetime import *
 from scipy.optimize import leastsq
 from dateutil import parser
-
-
-def msSQLConnect():
-	dbConnectionStr = "DRIVER={SQL Server};SERVER=PRIDBSQLV01\PRI2008A;DATABASE=SHA2;Trusted_Connection=yes"
-	try:
-		db = pyodbc.connect(dbConnectionStr, autocommit = True)
-	except pyodbc.Error, err:
-		logging.warning("Database connection error. " + str(err))
-		sys.exit()
-	return db
-
-def getStoredParams(asOfDate, bondTypeName):
-	strSql = """
-	SELECT b0.param_quote as beta0, b1.param_quote as beta1, b2.param_quote as beta2, b3.param_quote as beta3, t1.param_quote as tau1, t2.param_quote as tau2
-		FROM [SHA2].[rates_data].[bond_tsm_param_quotes] b0
-		LEFT JOIN [SHA2].[rates_data].[bond_tsm_param_quotes] b1 ON b0.asset_id = b1.asset_id
-		LEFT JOIN [SHA2].[rates_data].[bond_tsm_param_quotes] b2 ON b0.asset_id = b2.asset_id
-		LEFT JOIN [SHA2].[rates_data].[bond_tsm_param_quotes] b3 ON b0.asset_id = b3.asset_id
-		LEFT JOIN [SHA2].[rates_data].[bond_tsm_param_quotes] t1 ON b0.asset_id = t1.asset_id
-		LEFT JOIN [SHA2].[rates_data].[bond_tsm_param_quotes] t2 ON b0.asset_id = t2.asset_id
-		LEFT JOIN [SHA2].[rates_data].[asset_table] at ON b0.asset_id = at.asset_id
-		WHERE at.asset_name = '{sqlBondTypeName}' AND b0.param_id = 0 AND b1.param_id = 1 AND b2.param_id = 2 AND b3.param_id = 3 AND t1.param_id = 4 AND t2.param_id = 5
-		AND b0.save_date = '{sqlAsOfDate}' AND b1.save_date = '{sqlAsOfDate}' AND b2.save_date = '{sqlAsOfDate}' AND b3.save_date = '{sqlAsOfDate}'
-		AND t1.save_date = '{sqlAsOfDate}' AND t2.save_date = '{sqlAsOfDate}'
-		""".format(
-			sqlBondTypeName = bondTypeName,
-			sqlAsOfDate = asOfDate.strftime("%Y-%m-%d")
-			)
-
-	db = msSQLConnect()
-	cur = db.cursor()
-
-	cur.execute(strSql)
-
-	b0 = 13.637
-	b1 = -13.625615191
-	b2 = -39.65844
-	b3 = 19.34625
-	t1 = 92.66853
-	t2 = 66.80389
-
-	# Assign parameters
-	for row in cur:
-		if row.beta0 != 0.0:
-			b0 = row.beta0
-		if row.beta1 != 0.0:
-			b1 = row.beta1
-		if row.beta2 != 0.0:
-			b2 = row.beta2
-		if row.beta3 != 0.0:
-			b3 = row.beta3
-		if row.tau1 != 0.0:
-			t1 = row.tau1
-		if row.tau2 != 0.0:
-			t2 = row.tau2
-
-	return [b0,b1,b2,b3,t1,t2]
-
 
 fdCcyMap = {"USD":"us","CAD":"ca","GBP":"uk","EUR":"de"}
 ccyName = "USD"
 bondTypeName = "USD_CASH_BOND_GOVT"
 bondCurveName = "USD_CASH_BOND_GOVT_BMK"
 
-asOfDate = parser.parse("2009-02-19")
+asOfDate = parser.parse("2014-04-15")
+rollDate = asOfDate + timedelta(days=90)
 
 testClass = gb.GovernmentBondCurve(ccyName,bondCurveName)
 
@@ -99,8 +42,8 @@ for tempCUSIP, tempBondPricer in testClass.bondOffTheRunQuotes.items():
 	onTheRunDictionary[tempCUSIP] = tempBond.maturityDt
 
 
-# testClass.loadBondAllQuotes(asOfDate, bondTypeName)
-testClass.loadBondOffTheRunQuotes(asOfDate,6)
+testClass.loadBondAllQuotes(asOfDate, bondTypeName)
+#testClass.loadBondOffTheRunQuotes(asOfDate,6)
 
 tempSeriesArray = []
 priceArray = []
@@ -109,7 +52,7 @@ yieldArray = []
 predYieldArray = []
 cusipArray = []
 
-maturityCutoff = asOfDate + timedelta(days=90) #datetime(asOfDate.year, asOfDate.month+4, 1)
+maturityCutoff = asOfDate + timedelta(days=10) #datetime(asOfDate.year, asOfDate.month+4, 1)
 
 # Aggregate the bond cashflow data
 for tempCUSIP, tempBondPricer in testClass.bondOffTheRunQuotes.items():
@@ -126,24 +69,31 @@ for tempCUSIP, tempBondPricer in testClass.bondOffTheRunQuotes.items():
 			# print str(tempBondPricer.calcPriceTrueYield(0.02)) + " " + tempBond.CUSIP
 
 bondCal = fd.get_calendar(fdCcyMap[ccyName])
+
 settleDate = fd.rolldate(asOfDate + timedelta(days=tempBond.settleDelay), bondCal, "follow")
+settleRollDate = fd.rolldate(rollDate + timedelta(days=tempBond.settleDelay), bondCal, "follow")
 
-fedSpline = fts.FedTreasurySpline(settleDate, tempSeriesArray)
 
-#paramEst = [-0.4144769, 0.409366, 36.7183353, 2.3119174458, -1827.1307, 78.787144] # Run the last one [0.1,0.1,0.1,0.1,10,10] [-0.4144769, 0.409366, 36.7183353, 2.3119174458, -1827.1307, 78.787144]
+#paramEst = [0.0365179,-0.03027,-0.0681372,0.01737,2.40274,4.88103249] # Run the last one [0.1,0.1,0.1,0.1,10,10] [-0.4144769, 0.409366, 36.7183353, 2.3119174458, -1827.1307, 78.787144]
 #paramEst = [13.637,-13.625615191,-39.65844,19.34625,92.66853,66.80389]
 #paramEst = [1.61425,0.766363,-2891.4374,-13.26685,21858,0.659582]
 #paramEst = [0.5,0.5,0.5,0.5,10,10]
+paramEst = rbsde.getStoredParams(asOfDate, bondTypeName)
 
-fitParams = getStoredParams(asOfDate,bondTypeName)
+# fitParams = leastsq(fedSpline.getResidual, paramEst, args=(priceArray), maxfev=10000)
 
-[beta0,beta1,beta2,beta3,tau1,tau2] = fitParams
+#[beta0,beta1,beta2,beta3,tau1,tau2] = fitParams[0]
+[beta0,beta1,beta2,beta3,tau1,tau2] = paramEst
 
 endDate = datetime(settleDate.year+31,settleDate.month,15)
 daysDiff = (endDate-settleDate).days
 tempDates = [settleDate + timedelta(days=x) for x in range(0,daysDiff)]
 
+fedSpline = fts.FedTreasurySpline(settleDate, tempSeriesArray)
 bondPricePred,macDurationPred = fedSpline.priceBonds(beta0,beta1,beta2,beta3,tau1,tau2)
+
+fedSplineRoll = fts.FedTreasurySpline(settleRollDate, tempSeriesArray)
+bondPricePredRoll,macDurationPred = fedSplineRoll.priceBonds(beta0,beta1,beta2,beta3,tau1,tau2)
 
 fedSplineOTR = fts.FedTreasurySpline(settleDate, onTheRunSeriesArray)
 bondOnTheRunPricePred, macDurationPred = fedSplineOTR.priceBonds(beta0,beta1,beta2,beta3,tau1,tau2)
@@ -170,3 +120,77 @@ plt.plot(zCurve.index, zCurve, 'r', pCurve.index, pCurve, 'g', fCurve.index, fCu
 	onTheRunMaturityArray,onTheRunYieldArray,'mo', onTheRunMaturityArray,onTheRunPredYieldArray,'co')
 plt.show()
 
+
+# dateArray = []
+# for i in range(35):
+# 	dateArray.append(datetime(2016+i,1,1))
+# 	dateArray.append(datetime(2016+i,6,1))
+
+# testYlds,xDateArray,yYields = testClass.interpBondBmk(dateArray, True)
+
+# plt.plot(dateArray,testYlds,"o", xDateArray,yYields, "-")
+
+# plt.show()
+
+# # Define the cubic spline and return the coefficients
+
+# def cubicSplineCustom(xRange, yRange):
+# 	xCount = len(xRange)
+# 	yCount = len(yRange)
+
+# 	if xCount != yCount:
+# 		# Error handling
+# 		print "Mismatched datapoints in cubic spline"
+# 		return -999
+
+# 	yt = [0.0 for x in range(xCount)]	# Second derivative values
+# 	u = [0.0 for x in range(xCount)]
+
+# 	for i in range(1, xCount - 2):
+# 		sig = ( xRange[i] - xRange[i - 1] )/( xRange[i + 1] - xRange[i - 1] )
+# 		p = sig * yRange[i - 1] + 2
+# 		yt[i] = (sig - 1)/p
+# 		u[i] = ( yRange[i+1] - yRange[i] ) / ( xRange[i+1] - xRange[i-1] ) - (yRange[i] - yRange[i-1])/(xRange[i] - xRange[i-1])
+# 		u[i] = (6*u[i] / (xRange[i+1] - xRange[i-1]) - sig* u[i-1]) / p
+
+# 	qn = 0
+# 	un = 0
+
+# 	yt[xCount-1] = (un - qn*u[xCount - 1]) / (qn*yt[xCount-1] + 1)
+
+# 	for k in range(xCount-2, 0, -1):
+# 		yt[k] = yt[k] * yt[k+1] + u[k]
+
+# 	return zip(yRange,yt,u)
+
+
+# def Splines(X,Y):
+#     np1=len(X)
+#     n=np1-1
+#     X = [float(x) for x in X]
+#     Y = [float(y) for y in Y]
+#     a = Y[:]
+#     b = [0.0]*(n)
+#     d = [0.0]*(n)
+#     h = [X[i+1]-X[i] for i in xrange(n)]
+#     alpha = [0.0]*n
+#     for i in xrange(1,n):
+#         alpha[i] = 3/h[i]*(a[i+1]-a[i]) - 3/h[i-1]*(a[i]-a[i-1])
+#     c = [0.0]*np1
+#     L = [0.0]*np1
+#     u = [0.0]*np1
+#     z = [0.0]*np1
+#     L[0] = 1.0; u[0] = z[0] = 0.0
+#     for i in xrange(1,n):
+#         L[i] = 2*(X[i+1]-X[i-1]) - h[i-1]*u[i-1]
+#         u[i] = h[i]/L[i]
+#         z[i] = (alpha[i]-h[i-1]*z[i-1])/L[i]
+#     L[n] = 1.0; z[n] = c[n] = 0.0
+#     for j in xrange(n-1, -1, -1):
+#         c[j] = z[j] - u[j]*c[j+1]
+#         b[j] = (a[j+1]-a[j])/h[j] - (h[j]*(c[j+1]+2*c[j]))/3
+#         d[j] = (c[j+1]-c[j])/(3*h[j])
+#     splines = []
+#     for i in xrange(n):
+#         splines.append((a[i],b[i],c[i],d[i],X[i]))
+#     return splines,X[n]

@@ -25,35 +25,69 @@ class BondPricerClass(object):
 		# just to store yield (#Street convention, no calculation yet)
 		self.bondYld = 0.02
 		# accrInt
-		self.accrInt = 0
+		self.accrInt = 0.0
 
 		self.bondObj = bondClassObj
 
 		tempBondCal = fd.get_calendar(fdCcyMap[self.bondObj.ccyCode])
+
 		self.settleDate = fd.rolldate(asOfDate + timedelta(days=self.bondObj.settleDelay), tempBondCal, fdBusDayConvMap[self.bondObj.busDayConv])
 
 		# bondPrice, bondAccInt, bondYield, 
+		self.accrInt = self.calcAccruedInterest()
+
 		tempPmtSeries = self.bondObj.paySchedule
+
 		# Get a time series with settleDate
 		try:
-			tempPmtSeries[self.settleDate] = 0
+			# Remove any coupon on the settleDate
+			tempPmtSeries[self.settleDate] = tempPmtSeries[self.settleDate] - self.bondObj.coupon / freqDictionary[self.bondObj.payFreq]
 		except KeyError:
 			tempPmtSeries = tempPmtSeries.append(pd.Series([0],[self.settleDate]))
 
 		tempPmtSeries = tempPmtSeries.sort_index(ascending=True)
 
-		# calc accrued interest (use first pmt date before settleDate)
-		try:
-			tempAccrDate = tempPmtSeries[tempPmtSeries.index < self.settleDate].index[-1]
-			self.accrInt = self.bondObj.coupon / freqDictionary[self.bondObj.payFreq] * fd.yearfrac(self.settleDate, tempAccrDate, fdDayCountMap[self.bondObj.dayCount])
-		except IndexError:
-			self.accrInt = 0
-
 		tempPmtSeries = tempPmtSeries[tempPmtSeries.index >= self.settleDate]
 
 		self.payScheduleSettle = tempPmtSeries
 
-	# Calculate true yield (based on cashflows)
+	# Calculate the accrued interest in the bond to the settleDate given
+	def calcAccruedInterest(self):
+		# bondPrice, bondAccInt, bondYield, 
+		tempPmtSeries = self.bondObj.paySchedule
+
+		try:
+			tempLastCouponDate = tempPmtSeries[tempPmtSeries.index <= self.settleDate].index[-1]
+		except IndexError:
+			# This typically wouldn't happen unless you are buying before the issue date
+			return 0.0
+
+		# calc accrued interest (use first pmt date before settleDate)
+		if self.bondObj.ccyCode == 'USD' or self.bondObj.ccyCode == 'GBP':
+
+			try:
+				tempNextCouponDate = tempPmtSeries[tempPmtSeries.index >= self.settleDate].index[0]
+			except IndexError:
+				# This would only happen if you are settling on the maturity date
+				return 0.0
+			
+			tempDateDiff = (tempNextCouponDate - tempLastCouponDate).days
+
+			if tempDateDiff > 0:
+				tempAccrInt = self.bondObj.coupon * ( float((self.settleDate-tempLastCouponDate).days) / (tempNextCouponDate-tempLastCouponDate).days ) / freqDictionary[self.bondObj.payFreq]
+			else:
+				return 0.0
+
+		elif self.bondObj.ccyCode == 'CAD':
+			tempAccrInt = self.bondObj.coupon * ( float((self.settleDate-tempLastCouponDate).days) / 365.0 )
+
+		elif self.bondObj.ccyCode == 'EUR':
+			tempAccrInt = self.bondObj.coupon * fd.yearfrac(tempLastCouponDate, self.settleDate, '30E/360')	
+
+		return tempAccrInt
+
+
+	# Calculate true yield (based on cashflows) and a CLEAN price
 	def calcTrueYieldPrice(self, cleanPriceToFit, cmpFreq=2):
 		# declare lambda function to fit
 		# Fit's the cleanprice
@@ -267,7 +301,10 @@ class GovernmentBondCurve(object):
 			tempBondPricer.bondYld = row.yield_to_maturity
 			# row.clean_price, row.accrued_int, row.yield_to_maturity, 
 
-			if tempBond.CUSIP not in self.bondBmkCurveQuotes:
+			if len(self.bondBmkCurveQuotes) != 0:
+				if tempBond.CUSIP not in self.bondBmkCurveQuotes:
+					self.bondOffTheRunQuotes[tempBond.CUSIP] = tempBondPricer
+			else:
 				self.bondOffTheRunQuotes[tempBond.CUSIP] = tempBondPricer
 
 		return self.bondOffTheRunQuotes
@@ -306,7 +343,10 @@ class GovernmentBondCurve(object):
 			tempBondPricer.bondYld = row.yield_to_maturity
 			# row.clean_price, row.accrued_int, row.yield_to_maturity, 
 
-			if tempBond.CUSIP not in self.bondBmkCurveQuotes:
+			if len(self.bondBmkCurveQuotes) != 0:
+				if tempBond.CUSIP not in self.bondBmkCurveQuotes:
+					self.bondOffTheRunQuotes[tempBond.CUSIP] = tempBondPricer
+			else:
 				self.bondOffTheRunQuotes[tempBond.CUSIP] = tempBondPricer
 
 		return self.bondOffTheRunQuotes

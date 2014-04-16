@@ -9,6 +9,12 @@ import numpy as np
 import pdb # Debugger
 
 class FedTreasurySpline(object):
+	"""
+		Implements the NSS Spline but requires some minimization technique (external).  Can use lsq nonlinear but
+		also provides functionality for Differential Evolution using the wrap provided.
+		All prices are calculated dirty prices and have to be adjusted for accrued.
+		Must provide cashflows
+	"""
 	# Take as input an array of bondCashflow and turn them into a dataFrame, adjusted for accrued interest
 	def __init__(self, settleDate, bondCashflowSeriesArray):
 		# easiest to create a settleDate with a dummy dataFrame and add it on to the cashflows
@@ -49,11 +55,20 @@ class FedTreasurySpline(object):
 		expNOverTau1 = pd.DataFrame(expNOverTau1['YEARFRAC'].apply(math.exp), expNOverTau1.index, columns=['YEARFRAC'])
 		expNOverTau2 = pd.DataFrame(expNOverTau2['YEARFRAC'].apply(math.exp), expNOverTau2.index, columns=['YEARFRAC'])
 
+		# TEST
+		#nOverTau3 = self.dfYearFrac / tau3
+		#expNOverTau3 = -nOverTau3
+		#expNOverTau3 = pd.DataFrame(expNOverTau3['YEARFRAC'].apply(math.exp), expNOverTau3.index, columns=['YEARFRAC'])		
+
 		zeroCouponValues = beta0 + beta1*(1-expNOverTau1)/(nOverTau1) + beta2*((1-expNOverTau1)/(nOverTau1) - expNOverTau1) + beta3*((1-expNOverTau2)/(nOverTau2)-expNOverTau2)
+		zeroCouponValues = zeroCouponValues.fillna(beta0+beta1)
+		self.zcVal = zeroCouponValues # DEBUG CODE		
+		# TEST
+		#zeroCouponValues = zeroCouponValues + beta4*((1-expNOverTau3)/(nOverTau3) - expNOverTau3)
+		
 		zeroCurveValues = zeroCouponValues * self.dfYearFrac * (-1)		
 		zeroCurveValues = pd.DataFrame(zeroCurveValues['YEARFRAC'].apply(math.exp), zeroCurveValues.index, columns = ['DISCOUNTRATE'])
-		#self.zcVal = zeroCouponValues # DEBUG CODE
-		#self.zCurVal = zeroCurveValues # DEBUG CODE
+		self.zCurVal = zeroCurveValues # DEBUG CODE
 
 		for index, cpnSeries in self.dfBondCashflow.iteritems():
 			tmpPrice = zeroCurveValues * cpnSeries
@@ -67,9 +82,12 @@ class FedTreasurySpline(object):
 		return priceArray, macDurationArray
 
 	def getResidual(self, curveParams, priceMeas):
+		#[beta0, beta1, beta2, beta3, tau1, tau2] = curveParams
 		[beta0, beta1, beta2, beta3, tau1, tau2] = curveParams
 		# According to fed model, minimize the duration weighted sum of squares difference (approximately minimizing yields)
+		#tmpPrice, tmpMacDuration = self.priceBonds(beta0,beta1,beta2,beta3,tau1,tau2)
 		tmpPrice, tmpMacDuration = self.priceBonds(beta0,beta1,beta2,beta3,tau1,tau2)
+
 		npBondPrice = np.float64(tmpPrice)
 		npMacDuration = np.float64(tmpMacDuration)
 		npPriceMeas = np.float64(priceMeas)
@@ -87,14 +105,22 @@ class FedTreasurySpline(object):
 		expNOverTau1 = pd.DataFrame(expNOverTau1['YEARFRAC'].apply(math.exp), expNOverTau1.index, columns=['YEARFRAC'])
 		expNOverTau2 = pd.DataFrame(expNOverTau2['YEARFRAC'].apply(math.exp), expNOverTau2.index, columns=['YEARFRAC'])
 
+		#TEST
+		#nOverTau3 = self.dfYearFrac / tau3
+		#expNOverTau3 = -nOverTau3
+		#expNOverTau3 = pd.DataFrame(expNOverTau3['YEARFRAC'].apply(math.exp), expNOverTau3.index, columns=['YEARFRAC'])
+
 		dfZCValues = beta0 + beta1*(1-expNOverTau1)/(nOverTau1) + beta2*((1-expNOverTau1)/(nOverTau1) - expNOverTau1) + beta3*((1-expNOverTau2)/(nOverTau2)-expNOverTau2)
+		dfZCValues = dfZCValues.fillna(beta0+beta1)
+		# TEST
+		#dfZCValues = zeroCouponValues + beta4*((1-expNOverTau3)/(nOverTau3) - expNOverTau3)
 
 		return dfZCValues
 
 	# Return a par yield curve out to 30 years split semi-annually
 	def parYields(self, beta0, beta1, beta2, beta3, tau1, tau2, startDate):
 		# Compute as if continuous but calculate with daily
-		endDate = datetime(startDate.year+30,startDate.month,startDate.day)
+		endDate = datetime(startDate.year+31,startDate.month,15)
 		daysDiff = (endDate-startDate).days
 		tempDates = [startDate + timedelta(days=x) for x in range(0,daysDiff)]
 
@@ -118,7 +144,7 @@ class FedTreasurySpline(object):
 		return parYields
 
 	def forwardYields(self, beta0, beta1, beta2, beta3, tau1, tau2, startDate):
-		endDate = datetime(startDate.year+30,startDate.month,startDate.day)
+		endDate = datetime(startDate.year+31,startDate.month,15)
 		daysDiff = (endDate-startDate).days
 		tempDates = [startDate + timedelta(days=x) for x in range(0,daysDiff)]
 
@@ -135,6 +161,42 @@ class FedTreasurySpline(object):
 		dfFwdCurveValues = beta0 + beta1*expNOverTau1 + beta2*nOverTau1*expNOverTau1 + beta3*nOverTau2*expNOverTau2
 
 		return dfFwdCurveValues
+
+# Wrapper function to be used as "evaluator" function in the differential evolution class
+class FedTreasurySplineEvolWrap(object):
+	def __init__(self, settleDate, bondCashflowSeriesArray, bondPriceArray, initParams, domainRest):
+		self.ftsObject = FedTreasurySpline(settleDate, bondCashflowSeriesArray)
+		self.n = len(initParams)
+		self.x = initParams
+		self.domain = domainRest
+		self.measBondPrices = bondPriceArray
+
+		tempNPDomain = np.array(self.domain)
+		self.npDomainLow = tempNPDomain[:,0]
+		self.npDomainHigh = tempNPDomain[:,1]
+
+
+	# SUM OF SQUARE ERRORS
+	def target(self, paramArray):
+		try:
+			tempResid = self.ftsObject.getResidual(paramArray,self.measBondPrices)
+		except OverflowError:
+			print "OVERFLOW ERROR WITH " + str(paramArray)
+			tempResid = 1e7
+		else:
+			# tempResid = sum(tempResid * tempResid)
+			scaleArray = np.array([10,10,10,10,1.0,1.0])
+			tempBoundsLow = (self.npDomainLow - paramArray)*scaleArray
+			tempBoundsLow = tempBoundsLow[tempBoundsLow>0].sum()
+			tempBoundsHigh = (paramArray - self.npDomainHigh)*scaleArray
+			tempBoundsHigh = tempBoundsHigh[tempBoundsHigh>0].sum()
+
+			tempResid = np.array([abs(x) for x in tempResid])
+			tempResid = tempResid.max()
+			# tempResid = tempResid.sum()
+			tempResid = tempResid + tempBoundsHigh + tempBoundsLow
+
+		return tempResid
 
 
 
